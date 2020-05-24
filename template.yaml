@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Timeout: 3
+    MemorySize: 128
+
+Resources:
+  SqsQueue:
+    Type: AWS::SQS::Queue
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./api.py
+      Handler: api.lambda_handler
+      Runtime: python3.8
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName:
+              !GetAtt SqsQueue.QueueName
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /message
+            Method: post
+      Environment:
+        Variables:
+          QUEUE_URL: !Ref SqsQueue
+
+  SqsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./sqs_handle.py
+      Handler: sqs_handle.lambda_handler
+      Runtime: python3.8
+      ReservedConcurrentExecutions: 1
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: Table
+      Events:
+        SqsEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt SqsQueue.Arn
+
+  DynamoDB:
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      AttributeDefinitions: 
+        - AttributeName: ipAddress
+          AttributeType: S
+      KeySchema: 
+        - AttributeName: ipAddress
+          KeyType: HASH
+      ProvisionedThroughput: 
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      TableName: Table
